@@ -72,24 +72,6 @@ function formatDate(date) {
     return date.toLocaleDateString('en-GB', options);
 }
 
-/**
- * Print with IWARE device
- * @param {Object} data - Receipt data
- * @param {string} data.storeName - Store name
- * @param {string} data.address - Store Address
- * @param {Date} data.date - Receipt date
- * @param {string} data.receiptNumber - Receipt number
- * @param {string} data.servedBy - Crew name who served 
- * @param {string} data.customerName - Customer name 
- * @param {Object} data.items - Order items 
- * @param {string} data.items.name - Item name 
- * @param {number} data.items.quantity - Item quantity or amount 
- * @param {number} data.items.price - Item price 
- * @param {number} data.subtotal - Receipt subtotal value 
- * @param {number} data.total - Receipt total value 
- * @returns {Object} { success: true }
- * @throws {Error} If printing error
- */
 function generateBahariIrishPubReceipt(data) {
     let receipt = '';
     
@@ -129,6 +111,9 @@ function generateBahariIrishPubReceipt(data) {
         const itemLine = item.name + ' x ' + item.quantity;
         const priceLine = formatCurrency(item.price * item.quantity);
         receipt += createColumns(itemLine, priceLine) + ESC_POS.NEWLINE;
+        if (item.discountPercent) {
+            receipt += `  Discount ${item.discountPercent}%` + ESC_POS.NEWLINE;
+        }
     });
     
     // Dotted separator
@@ -137,8 +122,8 @@ function generateBahariIrishPubReceipt(data) {
     // Subtotal
     receipt += ESC_POS.NEWLINE;
     receipt += createColumns('Subtotal', formatCurrency(data.subtotal)) + ESC_POS.NEWLINE;
-    receipt += createColumns('Service - included', '') + ESC_POS.NEWLINE;
-    receipt += createColumns('Tax (PB1) - included', '') + ESC_POS.NEWLINE;
+    receipt += createColumns(`Service ${data.includedTaxService ? '- included' : data.taxPercent}`, '') + ESC_POS.NEWLINE;
+    receipt += createColumns(`Tax (PB1) ${data.includedTaxService ? '- included' : data.servicePercent}`, '') + ESC_POS.NEWLINE;
     
     // Total (Bold)
     receipt += ESC_POS.NEWLINE;
@@ -154,7 +139,9 @@ function generateBahariIrishPubReceipt(data) {
     receipt += 'Note:' + ESC_POS.NEWLINE;
     
     // Cut paper
-    receipt += ESC_POS.NEWLINE;
+    if (data.note) {
+        receipt += data.note + ESC_POS.NEWLINE;
+    }
     receipt += ESC_POS.NEWLINE;
     receipt += ESC_POS.NEWLINE;
     receipt += ESC_POS.NEWLINE;
