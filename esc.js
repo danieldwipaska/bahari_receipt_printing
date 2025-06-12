@@ -72,7 +72,7 @@ function formatDate(date) {
     return date.toLocaleDateString('en-GB', options);
 }
 
-function generateBahariIrishPubReceipt(data) {
+function generateReceipt(data, isChecker) {
     let receipt = '';
     
     // Initialize printer
@@ -110,29 +110,42 @@ function generateBahariIrishPubReceipt(data) {
     data.items.forEach(item => {
         const itemLine = item.name + ' x ' + item.quantity;
         const priceLine = formatCurrency(item.price * item.quantity);
-        receipt += createColumns(itemLine, priceLine) + ESC_POS.NEWLINE;
-        if (item.discountPercent) {
+        if (isChecker) {
+            receipt += itemLine + ESC_POS.NEWLINE;
+        } else {
+            receipt += createColumns(itemLine, priceLine) + ESC_POS.NEWLINE;
+        }
+
+        if (item.discountPercent && !isChecker) {
             receipt += `  Discount ${item.discountPercent}%` + ESC_POS.NEWLINE;
         }
     });
+
+    if (data.receiptType !== "PAY") {
+        receipt += createColumns(data.receiptType, formatCurrency(data.total)) + ESC_POS.NEWLINE;
+    }
     
     // Dotted separator
     receipt += createDottedLine() + ESC_POS.NEWLINE;
     
-    // Subtotal
-    receipt += ESC_POS.NEWLINE;
-    receipt += createColumns('Subtotal', formatCurrency(data.subtotal)) + ESC_POS.NEWLINE;
-    receipt += createColumns(`Service ${data.includedTaxService ? '- included' : data.taxPercent}`, '') + ESC_POS.NEWLINE;
-    receipt += createColumns(`Tax (PB1) ${data.includedTaxService ? '- included' : data.servicePercent}`, '') + ESC_POS.NEWLINE;
-    
-    // Total (Bold)
-    receipt += ESC_POS.NEWLINE;
-    receipt += ESC_POS.BOLD_ON;
-    receipt += createColumns('Total', formatCurrency(data.total)) + ESC_POS.NEWLINE;
-    receipt += ESC_POS.BOLD_OFF;
-    
-    // Final dotted separator
-    receipt += createDottedLine() + ESC_POS.NEWLINE;
+    if (!isChecker) {
+        if (data.receiptType === 'PAY') {
+            // Subtotal
+            receipt += ESC_POS.NEWLINE;
+            receipt += createColumns('Subtotal', formatCurrency(data.subtotal)) + ESC_POS.NEWLINE;
+            receipt += createColumns(`Service ${data.includedTaxService ? '- included' : data.taxPercent}`, '') + ESC_POS.NEWLINE;
+            receipt += createColumns(`Tax (PB1) ${data.includedTaxService ? '- included' : data.servicePercent}`, '') + ESC_POS.NEWLINE;
+        }
+        
+        // Total (Bold)
+        receipt += ESC_POS.NEWLINE;
+        receipt += ESC_POS.BOLD_ON;
+        receipt += createColumns('Total', formatCurrency(data.total)) + ESC_POS.NEWLINE;
+        receipt += ESC_POS.BOLD_OFF;
+        
+        // Final dotted separator
+        receipt += createDottedLine() + ESC_POS.NEWLINE;
+    }
     
     // Note section
     receipt += ESC_POS.NEWLINE;
@@ -152,7 +165,7 @@ function generateBahariIrishPubReceipt(data) {
 
 // Export for use in your Node.js application
 module.exports = {
-    generateBahariIrishPubReceipt,
+    generateReceipt,
     ESC_POS,
     formatCurrency,
     createColumns,

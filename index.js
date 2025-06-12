@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const fs = require('fs');
 const { promisify } = require('util');
-const { generateBahariIrishPubReceipt } = require('./esc');
+const { generateReceipt } = require('./esc');
 
 const app = express();
 app.use(express.json());
@@ -31,10 +31,10 @@ app.use(express.json());
  * @returns {Object} { success: true/false }
  * @throws {Error} If printing error
  */
-async function printToIware(receiptData, devicePath = process.env.PRINTER_DEVICE_PATH) {
+async function printToIware(receiptData, devicePath = process.env.PRINTER_DEVICE_PATH, isChecker = false) {
   try {
     // Write ke device menggunakan fs.writeFile
-    await promisify(fs.writeFile)(devicePath, Buffer.from(generateBahariIrishPubReceipt(receiptData), 'binary'));
+    await promisify(fs.writeFile)(devicePath, Buffer.from(generateReceipt(receiptData, isChecker), 'binary'));
 
     return { success: true };
   } catch (error) {
@@ -44,7 +44,7 @@ async function printToIware(receiptData, devicePath = process.env.PRINTER_DEVICE
 
 app.post('/print', async (req, res) => {
   try {
-    const { devicePath, data } = req.body;
+    const { devicePath, data, isChecker } = req.body;
     data.date = new Date(data.date);
 
     if (!data)
@@ -57,7 +57,11 @@ app.post('/print', async (req, res) => {
     let lastError = '';
 
     try {
-      await printToIware(data, devicePath);
+      if (isChecker) {
+        await printToIware(data, devicePath, isChecker);
+      } else {
+        await printToIware(data, devicePath);
+      }
       console.log(`✓ Printed successfully to ${devicePath ?? process.env.PRINTER_DEVICE_PATH}`);
       printed = true;
     } catch (error) {
