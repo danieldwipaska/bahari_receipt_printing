@@ -1,80 +1,78 @@
 require('dotenv').config();
 const express = require('express');
-const fs = require('fs');
-const { promisify } = require('util');
+const { spawn } = require('child_process');
 const { generateReceipt } = require('./esc');
 
 const app = express();
 app.use(express.json());
 
 /**
- * Print with IWARE device
- * @param {Object} receiptData - Receipt data
- * @param {string} receiptData.storeName - Store name
- * @param {string} receiptData.address - Store Address
- * @param {Date} receiptData.date - Receipt date
- * @param {string} receiptData.receiptNumber - Receipt number
- * @param {string} receiptData.servedBy - Crew name who served
- * @param {string} receiptData.customerName - Customer name
- * @param {Object} receiptData.items - Order items
- * @param {string} receiptData.items.name - Item name
- * @param {number} receiptData.items.quantity - Item quantity or amount
- * @param {number} receiptData.items.price - Item price
- * @param {number} receiptData.items.discountPercent - Discount percentage
- * @param {number} receiptData.items.discountedPrice - Price after discount
- * @param {boolean} receiptData.includedTaxService - Whether or not the order includes tax and service 
- * @param {number} receiptData.taxPercent - Tax percentage
- * @param {number} receiptData.servicePercent - Service percentage
- * @param {number} receiptData.subtotal - Receipt subtotal value
- * @param {number} receiptData.total - Receipt total value
- * @param {string} receiptData.note - Receipt total value
- * @returns {Object} { success: true/false }
- * @throws {Error} If printing error
+ * Sends raw ESC/POS data to a printer on a Windows machine.
+ * @param {Object} receiptData - Receipt data.
+ * @param {string} printerName - The name of the printer as it appears in Windows. Defaults to PRINTER_DEVICE_PATH from .env.
+ * @param {boolean} isChecker - If true, prints a simplified "checker" receipt.
+ * @returns {Promise<{success: true}>}
+ * @throws {Error} If printing fails.
  */
-async function printToIware(receiptData, devicePath = process.env.PRINTER_DEVICE_PATH, isChecker = false) {
-  try {
-    // Write ke device menggunakan fs.writeFile
-    await promisify(fs.writeFile)(devicePath, Buffer.from(generateReceipt(receiptData, isChecker), 'binary'));
+async function printToWindowsPrinter(receiptData, printerName = process.env.PRINTER_DEVICE_PATH, isChecker = false) {
+  return new Promise((resolve, reject) => {
+    if (!printerName) {
+      return reject(new Error('Printer name is not specified. Please set PRINTER_DEVICE_PATH in your .env file or provide it in the request body as "devicePath".'));
+    }
 
-    return { success: true };
-  } catch (error) {
-    throw new Error(`Print failed: ${error.message}`);
-  }
+    const rawData = generateReceipt(receiptData, isChecker);
+    
+    // Use PowerShell to send raw data to the printer on Windows.
+    // This requires PowerShell to be available in the system's PATH.
+    const ps = spawn('powershell', ['-Command', `Out-Printer -Name "${printerName}" -InputObject $input`]);
+
+    let stderr = '';
+    ps.stderr.on('data', (data) => {
+        stderr += data.toString();
+    });
+
+    ps.on('close', (code) => {
+        if (code === 0) {
+            resolve({ success: true });
+        } else {
+            reject(new Error(`Printing failed. PowerShell process exited with code ${code}. Error: ${stderr}`));
+        }
+    });
+    
+    ps.on('error', (err) => {
+        reject(new Error(`Failed to start PowerShell process: ${err.message}. Make sure PowerShell is installed and in your system's PATH.`));
+    });
+
+    // Write the raw ESC/POS data to the PowerShell process's standard input.
+    ps.stdin.write(rawData, 'binary');
+    ps.stdin.end();
+  });
 }
 
 app.post('/print', async (req, res) => {
   try {
+    // 'devicePath' from the request body is used as the Windows printer name.
     const { devicePath, data, isChecker } = req.body;
     data.date = new Date(data.date);
 
-    if (!data)
+    if (!data) {
       return res.status(400).json({
         success: false,
         error: 'Data is required',
       });
-
-    let printed = false;
-    let lastError = '';
-
-    try {
-      if (isChecker) {
-        await printToIware(data, devicePath, isChecker);
-      } else {
-        await printToIware(data, devicePath);
-      }
-      console.log(`✓ Printed successfully to ${devicePath ?? process.env.PRINTER_DEVICE_PATH}`);
-      printed = true;
-    } catch (error) {
-      lastError = error.message;
-      console.log(`✗ Failed on ${devicePath}: ${error.message}`);
     }
 
-    if (printed) {
-      res.json({ success: true, method: 'raw ESC/POS' });
-    } else {
+    const printerName = devicePath || process.env.PRINTER_DEVICE_PATH;
+    
+    try {
+      await printToWindowsPrinter(data, printerName, isChecker);
+      console.log(`✓ Print job sent to printer: ${printerName}`);
+      res.json({ success: true, method: 'raw ESC/POS via PowerShell' });
+    } catch (error) {
+      console.log(`✗ Failed to print to ${printerName}: ${error.message}`);
       res.status(500).json({
         success: false,
-        error: `All devices failed. Last error: ${lastError}`,
+        error: `Printing failed. Last error: ${error.message}`,
       });
     }
   } catch (error) {
@@ -88,5 +86,7 @@ app.post('/print', async (req, res) => {
 const port = process.env.PORT || 3003;
 
 app.listen(port, () => {
-  console.log(`IWARE Raw Print server running on port ${port}`);
+  console.log(`Raw Print Server for Windows running on port ${port}`);
+  console.log('Make sure your printer name is set in the .env file (PRINTER_DEVICE_PATH) or passed in the request body (devicePath).');
+  console.log('Example printer name: "EPSON TM-T82 Receipt"');
 });
