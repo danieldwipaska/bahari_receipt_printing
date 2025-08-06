@@ -69,7 +69,7 @@ function formatDate(date) {
         second: '2-digit',
         hour12: true
     };
-    return date.toLocaleDateString('en-GB', options);
+    return date.toLocaleString('id-ID', options);
 }
 
 function generateReceipt(data, isChecker) {
