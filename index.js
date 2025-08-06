@@ -44,7 +44,16 @@ async function printToIware(receiptData, devicePath = process.env.PRINTER_DEVICE
 
 app.post('/print', async (req, res) => {
   try {
-    const { devicePath, data, isChecker } = req.body;
+    const { data, isChecker, printer } = req.body;
+
+    const printerOptions = {
+      first_printer: process.env.FIRST_PRINTER || '',
+      second_printer: process.env.SECOND_PRINTER || '',
+      main_printer: process.env.MAIN_PRINTER || '',
+    };
+
+    const devicePath = printerOptions[printer];
+
     data.date = new Date(data.date);
 
     if (!data)
@@ -62,7 +71,7 @@ app.post('/print', async (req, res) => {
       } else {
         await printToIware(data, devicePath);
       }
-      console.log(`✓ Printed successfully to ${devicePath ?? process.env.PRINTER_DEVICE_PATH}`);
+      console.log(`✓ Printed successfully to ${devicePath ?? process.env.DEFAULT_DEVICE_PATH}`);
       printed = true;
     } catch (error) {
       lastError = error.message;
